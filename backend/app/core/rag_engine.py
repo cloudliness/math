@@ -26,7 +26,7 @@ class RAGEngine:
         Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5")
         self.llm = OpenRouter(
             api_key=os.environ.get("OPENROUTER_API_KEY"),
-            model="stepfun/step-3.5-flash:free",
+            model="nvidia/nemotron-3-nano-30b-a3b:free",
             temperature=0.1,
             max_retries=3
         )
@@ -101,15 +101,32 @@ class RAGEngine:
             ),
         ]
 
-        response = self.llm.chat(messages)
-        response_text = str(response.message.content) if response.message.content else ""
-        
+        try:
+            print("Sending to LLM Chat API...")
+            response = self.llm.chat(messages)
+            print("LLM Chat API Raw Response:", response)
+            response_text = str(response.message.content).strip() if response and hasattr(response, 'message') and response.message.content else ""
+        except Exception as e:
+            print(f"Exception during LLM chat: {e}")
+            response_text = ""
+            
         # Fallback: if still empty, try complete() with a shorter prompt
         if not response_text.strip():
+            print("Chat response empty, trying complete() fallback...")
             short_context = context_str[:500]
             fallback_prompt = f"Based on this: {short_context}\n\nAnswer briefly: {query_text}"
-            fallback_resp = self.llm.complete(fallback_prompt)
-            response_text = str(fallback_resp) if fallback_resp else "I received your question but the model didn't generate a response. Please try rephrasing."
+            try:
+                fallback_resp = self.llm.complete(fallback_prompt)
+                fallback_text = str(fallback_resp).strip() if fallback_resp else ""
+                
+                # If still empty, supply the error message
+                if not fallback_text:
+                    response_text = "I received your question but the model didn't generate a response (it returned an empty response). Please try rephrasing."
+                else:
+                    response_text = fallback_text
+            except Exception as e:
+                print(f"Exception during LLM complete: {e}")
+                response_text = f"I received your question, but encountered an error connecting to the AI: {e}"
 
         return {
             "response": response_text,
