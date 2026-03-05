@@ -1,0 +1,40 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/.env
+backend/server.log
+test_api.log
+test_api_2.log
+
+# Node.js
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+frontend/build/
+npm-debug.log*
+
+# Data & Databases
+chroma_db/
+data/chats/*.json
+!data/chats/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.log
+*.tmp
+.cache/
