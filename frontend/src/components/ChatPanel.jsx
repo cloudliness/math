@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import FlowRenderer from './FlowRenderer'
 import './ChatPanel.css'
 
 const API_URL = 'http://127.0.0.1:8000/api/v1'
@@ -21,8 +22,9 @@ export default function ChatPanel({ sessionId, onSessionCreated }) {
       setMessages([
         {
           role: 'assistant',
-          content: 'Hello! I\'m your **discrete mathematics tutor**. Ask me anything about logic, proofs, sets, or any topic from the textbook. 📚',
-          sources: []
+          content: 'Hello! I\'m your **discrete mathematics tutor**. Ask me anything about logic, proofs, sets, or any topic from the textbook. 📚\n\n*Tip: Ask me to draw a flowchart, tree, or graph!*',
+          sources: [],
+          flow_data: null
         }
       ])
       return
@@ -53,7 +55,7 @@ export default function ChatPanel({ sessionId, onSessionCreated }) {
     const trimmed = input.trim()
     if (!trimmed || loading) return
 
-    const userMsg = { role: 'user', content: trimmed, sources: [] }
+    const userMsg = { role: 'user', content: trimmed, sources: [], flow_data: null }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
@@ -81,13 +83,15 @@ export default function ChatPanel({ sessionId, onSessionCreated }) {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.response || 'I wasn\'t able to generate a response. Please try rephrasing.',
-        sources: data.sources || []
+        sources: data.sources || [],
+        flow_data: data.flow_data || null
       }])
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `⚠️ Connection error: ${err.message}. Make sure the backend is running.`,
-        sources: []
+        sources: [],
+        flow_data: null
       }])
     } finally {
       setLoading(false)
@@ -140,6 +144,9 @@ export default function ChatPanel({ sessionId, onSessionCreated }) {
                       </div>
                     ))}
                   </div>
+                )}
+                {msg.flow_data && (
+                  <FlowRenderer flowData={msg.flow_data} />
                 )}
               </div>
             </div>

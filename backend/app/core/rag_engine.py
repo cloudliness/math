@@ -12,7 +12,27 @@ load_dotenv()
 
 SYSTEM_PROMPT = """You are a helpful discrete mathematics tutor. 
 Answer the student's question using the provided context from a textbook.
-Be clear and concise. Use proper mathematical notation where appropriate."""
+Be clear and concise. Use proper mathematical notation where appropriate.
+
+CRITICAL INSTRUCTION FOR VISUALIZATIONS:
+If the user asks for a "flowchart", "graph", "tree", "automaton", or any visual representation, you MUST return a strict JSON object that contains BOTH your text explanation AND the react flow data.
+Do NOT wrap the JSON in markdown code blocks. The response should be pure JSON parseable by python's `json.loads()`.
+
+The JSON schema MUST exactly match:
+{
+  "text_explanation": "Markdown text goes here.",
+  "react_flow_data": {
+    "nodes": [
+      {"id": "string", "data": {"label": "string"}, "position": {"x": number, "y": number}}
+    ],
+    "edges": [
+      {"id": "string", "source": "string", "target": "string", "animated": boolean (optional)}
+    ]
+  }
+}
+
+If the user DOES NOT ask for a visual, simply return plain Markdown text as normal.
+"""
 
 # Max characters of context to send to the free model to avoid token limits
 MAX_CONTEXT_CHARS = 1500
@@ -26,8 +46,9 @@ class RAGEngine:
         Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5")
         self.llm = OpenRouter(
             api_key=os.environ.get("OPENROUTER_API_KEY"),
-            model="nvidia/nemotron-3-nano-30b-a3b:free",
+            model="nousresearch/hermes-2-pro-llama-3-8b",
             temperature=0.1,
+            max_tokens=2000,
             max_retries=3
         )
         Settings.llm = self.llm
@@ -104,11 +125,42 @@ class RAGEngine:
         try:
             print("Sending to LLM Chat API...")
             response = self.llm.chat(messages)
-            print("LLM Chat API Raw Response:", response)
-            response_text = str(response.message.content).strip() if response and hasattr(response, 'message') and response.message.content else ""
+            raw_content = str(response.message.content).strip() if response and hasattr(response, 'message') and response.message.content else ""
+            
+            # Attempt to parse json if it looks like json
+            response_text = raw_content
+            flow_data = None
+            
+            import json
+            import re
+            
+            # Clean possible markdown formatting
+            # Try to extract a JSON block if the model wrapped it
+            json_str = raw_content
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                # Try to find the first '{' and last '}'
+                start = raw_content.find('{')
+                end = raw_content.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    json_str = raw_content[start:end+1]
+            
+            try:
+                if '{' in json_str:
+                    parsed = json.loads(json_str)
+                    if "text_explanation" in parsed:
+                        response_text = parsed["text_explanation"]
+                    if "react_flow_data" in parsed:
+                        flow_data = parsed["react_flow_data"]
+            except json.JSONDecodeError:
+                pass # Not JSON, treat as standard text
+                
         except Exception as e:
             print(f"Exception during LLM chat: {e}")
             response_text = ""
+            flow_data = None
             
         # Fallback: if still empty, try complete() with a shorter prompt
         if not response_text.strip():
@@ -119,7 +171,6 @@ class RAGEngine:
                 fallback_resp = self.llm.complete(fallback_prompt)
                 fallback_text = str(fallback_resp).strip() if fallback_resp else ""
                 
-                # If still empty, supply the error message
                 if not fallback_text:
                     response_text = "I received your question but the model didn't generate a response (it returned an empty response). Please try rephrasing."
                 else:
@@ -130,6 +181,7 @@ class RAGEngine:
 
         return {
             "response": response_text,
+            "flow_data": flow_data,
             "sources": sources
         }
 
