@@ -16,6 +16,7 @@ class Message(BaseModel):
     content: str
     sources: Optional[list[dict]] = None
     flow_data: Optional[dict] = None
+    mafs_data: Optional[dict] = None
 
 class ChatSession(BaseModel):
     id: str
@@ -31,6 +32,7 @@ class ChatResponse(BaseModel):
     response: str
     sources: list[dict]
     flow_data: Optional[dict] = None
+    mafs_data: Optional[dict] = None
 
 def get_session_path(session_id: str) -> str:
     os.makedirs(CHATS_DIR, exist_ok=True)
@@ -123,7 +125,8 @@ async def chat_endpoint(request: ChatRequest):
             "role": "assistant",
             "content": result["response"],
             "sources": result["sources"],
-            "flow_data": result.get("flow_data")
+            "flow_data": result.get("flow_data"),
+            "mafs_data": result.get("mafs_data")
         })
         
         # Update timestamp and save
@@ -133,7 +136,8 @@ async def chat_endpoint(request: ChatRequest):
         return ChatResponse(
             response=result["response"],
             sources=result["sources"],
-            flow_data=result.get("flow_data")
+            flow_data=result.get("flow_data"),
+            mafs_data=result.get("mafs_data")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

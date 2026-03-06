@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "katex": "^0.16.33",
+    "mafs": "^0.21.0",
+    "mathjs": "^15.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

@@ -15,19 +15,26 @@ Answer the student's question using the provided context from a textbook.
 Be clear and concise. Use proper mathematical notation where appropriate.
 
 CRITICAL INSTRUCTION FOR VISUALIZATIONS:
-If the user asks for a "flowchart", "graph", "tree", "automaton", or any visual representation, you MUST return a strict JSON object that contains BOTH your text explanation AND the react flow data.
-Do NOT wrap the JSON in markdown code blocks. The response should be pure JSON parseable by python's `json.loads()`.
+If the user asks for a visual representation, you MUST return a strict JSON object containing BOTH your text explanation AND the correct visualization data. Do NOT wrap the JSON in markdown code blocks. The response should be pure JSON parseable by python's `json.loads()`.
 
-The JSON schema MUST exactly match:
+Depending on what the user asks for, choose the correct schema:
+
+1. FLOWCHARTS, TREES, GRAPHS, AUTOMATA: Use `react_flow_data`.
 {
   "text_explanation": "Markdown text goes here.",
   "react_flow_data": {
-    "nodes": [
-      {"id": "string", "data": {"label": "string"}, "position": {"x": number, "y": number}}
-    ],
-    "edges": [
-      {"id": "string", "source": "string", "target": "string", "animated": boolean (optional)}
-    ]
+    "nodes": [{"id": "string", "data": {"label": "string"}, "position": {"x": number, "y": number}}],
+    "edges": [{"id": "string", "source": "string", "target": "string", "animated": boolean (optional)}]
+  }
+}
+
+2. ALGEBRAIC PLOTS, FUNCTIONS, COORDINATE GEOMETRY (e.g. Big-O growth): Use `mafs_data`.
+{
+  "text_explanation": "Markdown text goes here.",
+  "mafs_data": {
+    "functions": [{"expression": "string, e.g. x^2 or x*log(x)", "color": "string (optional)"}],
+    "points": [{"x": number, "y": number, "label": "string (optional)"}],
+    "view_window": {"x": [-10, 10], "y": [-10, 100]}
   }
 }
 
@@ -130,6 +137,7 @@ class RAGEngine:
             # Attempt to parse json if it looks like json
             response_text = raw_content
             flow_data = None
+            mafs_data = None
             
             import json
             import re
@@ -154,6 +162,8 @@ class RAGEngine:
                         response_text = parsed["text_explanation"]
                     if "react_flow_data" in parsed:
                         flow_data = parsed["react_flow_data"]
+                    if "mafs_data" in parsed:
+                        mafs_data = parsed["mafs_data"]
             except json.JSONDecodeError:
                 pass # Not JSON, treat as standard text
                 
@@ -161,6 +171,7 @@ class RAGEngine:
             print(f"Exception during LLM chat: {e}")
             response_text = ""
             flow_data = None
+            mafs_data = None
             
         # Fallback: if still empty, try complete() with a shorter prompt
         if not response_text.strip():
@@ -182,6 +193,7 @@ class RAGEngine:
         return {
             "response": response_text,
             "flow_data": flow_data,
+            "mafs_data": mafs_data,
             "sources": sources
         }
 
