@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "serve -s dist"
   },
   "dependencies": {
     "katex": "^0.16.33",
@@ -18,7 +19,8 @@
     "react-markdown": "^10.1.0",
     "reactflow": "^11.11.4",
     "rehype-katex": "^7.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

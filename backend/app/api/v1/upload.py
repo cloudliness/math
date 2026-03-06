@@ -21,7 +21,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "data")
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "data"))
 
 @router.post("/upload")
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):

@@ -61,9 +61,11 @@ class RAGEngine:
         Settings.llm = self.llm
 
     def _load_index(self):
-        self.db_path = os.path.join(os.getcwd(), "..", "chroma_db")
-        if not os.path.exists(self.db_path):
-            self.db_path = os.path.join(os.getcwd(), "chroma_db")
+        self.db_path = os.environ.get("CHROMA_DB_DIR")
+        if not self.db_path:
+            self.db_path = os.path.join(os.getcwd(), "..", "chroma_db")
+            if not os.path.exists(self.db_path):
+                self.db_path = os.path.join(os.getcwd(), "chroma_db")
 
         print(f"Connecting to ChromaDB at: {self.db_path}")
         self.db = chromadb.PersistentClient(path=self.db_path)
