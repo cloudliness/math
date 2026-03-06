@@ -5,4 +5,5 @@ llama-index-vector-stores-chroma
 llama-parse
 python-dotenv
 fastapi
+python-multipart
 uvicorn
