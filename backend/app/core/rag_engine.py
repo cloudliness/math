@@ -82,6 +82,11 @@ class RAGEngine:
             verbose=True
         )
         documents = parser.load_data(file_path)
+        
+        # Add file_name to metadata for each document
+        file_name = os.path.basename(file_path)
+        for doc in documents:
+            doc.metadata["file_name"] = file_name
 
         vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -92,10 +97,48 @@ class RAGEngine:
         )
         return len(documents)
 
-    def query(self, query_text):
+    def delete_document(self, filename: str):
+        """Delete all chunks associated with a specific file from the vector store."""
+        print(f"Deleting document '{filename}' from ChromaDB.")
+        # We need to query chromadb directly to delete by metadata
+        self.chroma_collection.delete(where={"file_name": filename})
+        # Reset the index connected to this updated collection
+        vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
+        self.index = VectorStoreIndex.from_vector_store(vector_store)
+
+    def query(self, query_text, active_documents=None):
         # Step 1: Retrieve relevant chunks
-        retriever = self.index.as_retriever(similarity_top_k=3)
-        source_nodes = retriever.retrieve(query_text)
+        
+        # Determine if we need to filter by document
+        retriever_kwargs = {"similarity_top_k": 3}
+        if active_documents is not None:
+            if not active_documents:
+                # If active_documents is an empty list, user toggled off ALL documents.
+                return {"response": "You have disabled all documents for context. Please enable at least one to ask questions about them.", "sources": []}
+            
+            from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
+            # Build filters dynamically based on how many documents are active
+            filters = [ExactMatchFilter(key="file_name", value=doc_name) for doc_name in active_documents]
+            # When there are multiple filters with 'or', LlamaIndex might require specific Condition construction depending on version.
+            # Using ChromaDB's built-in capability might be easier if LlamaIndex MetadataFilters complains about IN clauses, 
+            # but we can try simple MetadataFilters with condition="or".
+            from llama_index.core.vector_stores import MetadataFilter, FilterOperator, FilterCondition
+            
+            # Use 'in' operator for multiple documents
+            metadata_filters = MetadataFilters(
+                filters=[
+                    MetadataFilter(key="file_name", value=active_documents, operator=FilterOperator.IN)
+                ]
+            )
+            retriever_kwargs["filters"] = metadata_filters
+
+        try:
+            retriever = self.index.as_retriever(**retriever_kwargs)
+            source_nodes = retriever.retrieve(query_text)
+        except Exception as e:
+            print(f"Error during retrieval with filters: {e}")
+            retriever = self.index.as_retriever(similarity_top_k=3)
+            source_nodes = retriever.retrieve(query_text)
 
         if not source_nodes:
             return {"response": "I couldn't find relevant information in the textbook.", "sources": []}

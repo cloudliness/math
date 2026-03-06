@@ -101,3 +101,27 @@ async def list_documents():
     files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(".pdf")]
     return {"documents": files, "count": len(files)}
 
+@router.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    # Security: prevent directory traversal
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(DATA_DIR, safe_filename)
+    
+    # 1. Delete from RAG engine
+    try:
+        engine = get_rag_engine()
+        engine.delete_document(safe_filename)
+    except Exception as e:
+        print(f"Error removing document from VectorDB: {e}")
+        # Proceed to delete from disk anyway
+    
+    # 2. Delete from disk
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    # Update statuses if it exists there
+    if safe_filename in upload_statuses:
+        del upload_statuses[safe_filename]
+        
+    return {"status": "success", "message": f"Deleted {safe_filename}"}
+

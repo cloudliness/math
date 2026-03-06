@@ -307,10 +307,17 @@
   color: var(--text-secondary);
   transition: background 0.15s;
   cursor: default;
+  position: relative;
 }
 
 .doc-pill:hover {
   background: rgba(124, 58, 237, 0.06);
+}
+
+.doc-pill-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent-3);
+  margin: 0;
 }
 
 .doc-pill-icon {
@@ -321,6 +328,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.doc-pill-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  padding: 0 4px;
+}
+
+.doc-pill:hover .doc-pill-delete {
+  opacity: 1;
+}
+
+.doc-pill-delete:hover {
+  color: var(--status-error);
 }
 
 .doc-empty {

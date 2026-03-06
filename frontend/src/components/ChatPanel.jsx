@@ -9,7 +9,7 @@ import './ChatPanel.css'
 
 const API_URL = 'http://127.0.0.1:8000/api/v1'
 
-export default function ChatPanel({ sessionId, onSessionCreated }) {
+export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -76,7 +76,11 @@ export default function ChatPanel({ sessionId, onSessionCreated }) {
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: currentSessionId, message: trimmed })
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          message: trimmed,
+          active_documents: activeDocuments || []
+        })
       })
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`)

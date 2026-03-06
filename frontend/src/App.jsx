@@ -7,6 +7,7 @@ const API_URL = 'http://127.0.0.1:8000/api/v1'
 
 function App() {
   const [documents, setDocuments] = useState([])
+  const [activeDocuments, setActiveDocuments] = useState([])
   const [sessions, setSessions] = useState([])
   const [activeTab, setActiveTab] = useState('chat')
   const [activeSessionId, setActiveSessionId] = useState(localStorage.getItem('activeSessionId') || null)
@@ -15,7 +16,16 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/documents`)
       const data = await res.json()
-      setDocuments(data.documents || [])
+      const docs = data.documents || []
+
+      setDocuments(docs)
+      // Any new document is active by default. 
+      // We merge with existing activeDocuments so we don't overwrite user choices
+      setActiveDocuments(prev => {
+        const activeSet = new Set(prev)
+        const newActive = docs.filter(doc => !prev.includes(doc)) // if it wasn't tracked, make it active
+        return [...prev, ...newActive]
+      })
     } catch { /* backend might not be running */ }
   }
 
@@ -39,6 +49,25 @@ function App() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const deleteDocument = async (filename, e) => {
+    e.stopPropagation()
+    try {
+      await fetch(`${API_URL}/documents/${filename}`, { method: 'DELETE' })
+      setActiveDocuments(prev => prev.filter(doc => doc !== filename))
+      fetchDocuments()
+    } catch (err) {
+      console.error("Failed to delete document:", err)
+    }
+  }
+
+  const toggleDocument = (filename) => {
+    setActiveDocuments(prev =>
+      prev.includes(filename)
+        ? prev.filter(doc => doc !== filename)
+        : [...prev, filename]
+    )
   }
 
   const handleSelectSession = (id) => {
@@ -146,8 +175,20 @@ function App() {
           </div>
           {documents.map((doc, i) => (
             <div key={i} className="doc-pill">
+              <input
+                type="checkbox"
+                className="doc-pill-checkbox"
+                checked={activeDocuments.includes(doc)}
+                onChange={() => toggleDocument(doc)}
+                title="Toggle document context"
+              />
               <span className="doc-pill-icon">📄</span>
               <span className="doc-pill-name">{doc.replace('.pdf', '')}</span>
+              <button
+                className="doc-pill-delete"
+                onClick={(e) => deleteDocument(doc, e)}
+                title="Delete document"
+              >×</button>
             </div>
           ))}
           {documents.length === 0 && (
@@ -168,6 +209,7 @@ function App() {
         {activeTab === 'chat' && (
           <ChatPanel
             sessionId={activeSessionId}
+            activeDocuments={activeDocuments}
             onSessionCreated={(id) => {
               setActiveSessionId(id)
               localStorage.setItem('activeSessionId', id)

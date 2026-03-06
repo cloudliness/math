@@ -1,6 +1,6 @@
 when it comes to using LLM, to keep my costs down, always use my openrouter api key: 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
 
-for the LLM model from openrouter, use: stepfun/step-3.5-flash:free
+for the LLM model from openrouter, use: nousresearch/hermes-2-pro-llama-3-8b
 
 use llamaIndex for the framwork
 use llamaparser for the parser

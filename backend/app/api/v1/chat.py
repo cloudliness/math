@@ -27,6 +27,7 @@ class ChatSession(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    active_documents: Optional[List[str]] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -118,7 +119,7 @@ async def chat_endpoint(request: ChatRequest):
         
         # Run RAG
         engine = get_rag_engine()
-        result = engine.query(request.message)
+        result = engine.query(request.message, active_documents=request.active_documents)
         
         # Append assistant message
         session["messages"].append({
