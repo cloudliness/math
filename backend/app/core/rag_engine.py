@@ -2,10 +2,52 @@ import os
 import chromadb
 from llama_index.core import VectorStoreIndex, Settings
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.embeddings import BaseEmbedding
 from llama_index.llms.openrouter import OpenRouter
 from llama_index.core.llms import ChatMessage, MessageRole
+import requests
 from dotenv import load_dotenv
+
+class OpenRouterEmbedding(BaseEmbedding):
+    """Custom embedding class for OpenRouter API."""
+    model_name: str
+    api_key: str
+    api_base: str = "https://openrouter.ai/api/v1"
+
+    def __init__(self, model_name: str, api_key: str, **kwargs):
+        super().__init__(model_name=model_name, api_key=api_key, **kwargs)
+
+    def _get_query_embedding(self, query: str) -> list[float]:
+        return self._get_text_embedding(query)
+
+    def _get_text_embedding(self, text: str) -> list[float]:
+        import time
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "input": [text],
+            "model": self.model_name
+        }
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(f"{self.api_base}/embeddings", headers=headers, json=payload, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                return data["data"][0]["embedding"]
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    print(f"Failed to get embedding after {max_retries} attempts: {e}")
+                    raise
+                time.sleep(2 ** attempt)  # Exponential backoff
+
+    async def _aget_query_embedding(self, query: str) -> list[float]:
+        return self._get_query_embedding(query)
+
+    async def _aget_text_embedding(self, text: str) -> list[float]:
+        return self._get_text_embedding(text)
 
 # Load environment variables
 load_dotenv()
@@ -14,31 +56,32 @@ SYSTEM_PROMPT = """You are a helpful discrete mathematics tutor.
 Answer the student's question using the provided context from a textbook.
 Be clear and concise. Use proper mathematical notation where appropriate.
 
-CRITICAL INSTRUCTION FOR VISUALIZATIONS:
-If the user asks for a visual representation, you MUST return a strict JSON object containing BOTH your text explanation AND the correct visualization data. Do NOT wrap the JSON in markdown code blocks. The response should be pure JSON parseable by python's `json.loads()`.
+CRITICAL VISUALIZATION INSTRUCTIONS:
+If the user asks for a visual representation (plot, graph, flowchart, tree, etc.), you MUST return a SINGLE JSON object. 
+Do NOT provide Python code, scripts, or instructions to run external libraries (like matplotlib or numpy).
+Do NOT wrap the JSON in markdown code blocks.
+The entire response MUST be a pure, parseable JSON object with the following schema:
 
-Depending on what the user asks for, choose the correct schema:
-
-1. FLOWCHARTS, TREES, GRAPHS, AUTOMATA: Use `react_flow_data`.
+For FLOWCHARTS, TREES, GRAPHS, or AUTOMATA:
 {
-  "text_explanation": "Markdown text goes here.",
+  "text_explanation": "Markdown text explanation here.",
   "react_flow_data": {
-    "nodes": [{"id": "string", "data": {"label": "string"}, "position": {"x": number, "y": number}}],
-    "edges": [{"id": "string", "source": "string", "target": "string", "animated": boolean (optional)}]
+    "nodes": [{"id": "1", "data": {"label": "Node Label"}, "position": {"x": 100, "y": 100}}],
+    "edges": [{"id": "e1-2", "source": "1", "target": "2"}]
   }
 }
 
-2. ALGEBRAIC PLOTS, FUNCTIONS, COORDINATE GEOMETRY (e.g. Big-O growth): Use `mafs_data`.
+For COORDINATE PLOTS, FUNCTIONS, or GROWTH CHARTS (e.g. Big-O):
 {
-  "text_explanation": "Markdown text goes here.",
+  "text_explanation": "Markdown text explanation here.",
   "mafs_data": {
-    "functions": [{"expression": "string, e.g. x^2 or x*log(x)", "color": "string (optional)"}],
-    "points": [{"x": number, "y": number, "label": "string (optional)"}],
-    "view_window": {"x": [-10, 10], "y": [-10, 100]}
+    "functions": [{"expression": "x^2", "color": "blue"}],
+    "points": [{"x": 5, "y": 25, "label": "P"}],
+    "view_window": {"x": [-5, 5], "y": [-5, 50]}
   }
 }
 
-If the user DOES NOT ask for a visual, simply return plain Markdown text as normal.
+WARNING: If the user DOES NOT ask for a visual, respond with standard Markdown text normally. If they DO ask for a visual, you MUST use the JSON format above.
 """
 
 # Max characters of context to send to the free model to avoid token limits
@@ -50,10 +93,14 @@ class RAGEngine:
         self.index = self._load_index()
 
     def _initialize_settings(self):
-        Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5")
+        # We use a custom class to avoid OpenAI-specific validation errors with OpenRouter
+        Settings.embed_model = OpenRouterEmbedding(
+            model_name="nvidia/llama-nemotron-embed-vl-1b-v2:free",
+            api_key=os.environ.get("OPENROUTER_API_KEY")
+        )
         self.llm = OpenRouter(
             api_key=os.environ.get("OPENROUTER_API_KEY"),
-            model="nousresearch/hermes-2-pro-llama-3-8b",
+            model="google/gemini-2.0-flash-001",
             temperature=0.1,
             max_tokens=2000,
             max_retries=3
@@ -170,7 +217,7 @@ class RAGEngine:
             ChatMessage(role=MessageRole.SYSTEM, content=SYSTEM_PROMPT),
             ChatMessage(
                 role=MessageRole.USER,
-                content=f"Context:\n{context_str}\n\nQuestion: {query_text}"
+                content=f"Context:\n{context_str}\n\nQuestion: {query_text}\n\nIMPORTANT: If this question requires a visual, you MUST reply with a pure JSON object using the `mafs_data` or `react_flow_data` schema defined in your system prompt. Do NOT write Python code."
             ),
         ]
 
@@ -187,30 +234,41 @@ class RAGEngine:
             import json
             import re
             
-            # Clean possible markdown formatting
-            # Try to extract a JSON block if the model wrapped it
+            # Helper to safely try parsing JSON
+            def try_parse_json(text):
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return None
+
             json_str = raw_content
+            parsed = None
+            
+            # 1. Try to extract an explicit JSON block if the model wrapped it
             json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_content, re.DOTALL)
             if json_match:
-                json_str = json_match.group(1)
-            else:
-                # Try to find the first '{' and last '}'
-                start = raw_content.find('{')
-                end = raw_content.rfind('}')
-                if start != -1 and end != -1 and end > start:
-                    json_str = raw_content[start:end+1]
+                parsed = try_parse_json(json_match.group(1))
             
-            try:
-                if '{' in json_str:
-                    parsed = json.loads(json_str)
-                    if "text_explanation" in parsed:
-                        response_text = parsed["text_explanation"]
+            # 2. If no code block, check if the ENTIRE response is just a JSON object
+            if not parsed and raw_content.strip().startswith('{') and raw_content.strip().endswith('}'):
+                parsed = try_parse_json(raw_content)
+
+            # If we successfully parsed a JSON object that matches our schema, use it.
+            # Otherwise, leave response_text as the FULL raw_content.
+            recognized_keys = ["text_explanation", "react_flow_data", "mafs_data", "response", "text", "answer"]
+            if parsed and isinstance(parsed, dict):
+                has_recognized_key = any(k in parsed for k in recognized_keys)
+                if has_recognized_key:
+                    # Priority for our specific keys
+                    if "text_explanation" in parsed: response_text = parsed["text_explanation"]
+                    elif "response" in parsed: response_text = parsed["response"]
+                    elif "text" in parsed: response_text = parsed["text"]
+                    elif "answer" in parsed: response_text = parsed["answer"]
+                    
                     if "react_flow_data" in parsed:
                         flow_data = parsed["react_flow_data"]
                     if "mafs_data" in parsed:
                         mafs_data = parsed["mafs_data"]
-            except json.JSONDecodeError:
-                pass # Not JSON, treat as standard text
                 
         except Exception as e:
             print(f"Exception during LLM chat: {e}")
@@ -222,7 +280,7 @@ class RAGEngine:
         if not response_text.strip():
             print("Chat response empty, trying complete() fallback...")
             short_context = context_str[:500]
-            fallback_prompt = f"Based on this: {short_context}\n\nAnswer briefly: {query_text}"
+            fallback_prompt = f"Based on this: {short_context}\n\nAnswer briefly: {query_text}\n\nIMPORTANT: If this question requires a visual, you MUST reply with a pure JSON object using the `mafs_data` or `react_flow_data` schema defined in your system prompt. Do NOT write Python code."
             try:
                 fallback_resp = self.llm.complete(fallback_prompt)
                 fallback_text = str(fallback_resp).strip() if fallback_resp else ""
@@ -231,6 +289,29 @@ class RAGEngine:
                     response_text = "I received your question but the model didn't generate a response (it returned an empty response). Please try rephrasing."
                 else:
                     response_text = fallback_text
+                    
+                    # Apply the same JSON extraction logic
+                    fallback_parsed = None
+                    fb_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', fallback_text, re.DOTALL)
+                    if fb_match:
+                        fallback_parsed = try_parse_json(fb_match.group(1))
+                    
+                    if not fallback_parsed and fallback_text.strip().startswith('{') and fallback_text.strip().endswith('}'):
+                        fallback_parsed = try_parse_json(fallback_text)
+
+                    if fallback_parsed and isinstance(fallback_parsed, dict):
+                        recognized_keys = ["text_explanation", "react_flow_data", "mafs_data", "response", "text", "answer"]
+                        if any(k in fallback_parsed for k in recognized_keys):
+                            if "text_explanation" in fallback_parsed: response_text = fallback_parsed["text_explanation"]
+                            elif "response" in fallback_parsed: response_text = fallback_parsed["response"]
+                            elif "text" in fallback_parsed: response_text = fallback_parsed["text"]
+                            elif "answer" in fallback_parsed: response_text = fallback_parsed["answer"]
+
+                            if "react_flow_data" in fallback_parsed:
+                                flow_data = fallback_parsed["react_flow_data"]
+                            if "mafs_data" in fallback_parsed:
+                                mafs_data = fallback_parsed["mafs_data"]
+                            
             except Exception as e:
                 print(f"Exception during LLM complete: {e}")
                 response_text = f"I received your question, but encountered an error connecting to the AI: {e}"

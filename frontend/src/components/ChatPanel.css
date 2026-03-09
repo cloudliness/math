@@ -382,3 +382,60 @@
     opacity: 0.35;
     cursor: not-allowed;
 }
+
+/* ─── Mobile Optimizations ─── */
+@media (max-width: 768px) {
+    .chat-header {
+        padding: 14px 18px;
+    }
+
+    .chat-header-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+    }
+
+    .chat-messages {
+        padding: 16px;
+        gap: 16px;
+    }
+
+    .chat-msg {
+        gap: 10px;
+    }
+
+    .chat-msg-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 14px;
+    }
+
+    .chat-msg-user .chat-msg-body {
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+
+    .chat-input-area {
+        padding: 12px;
+    }
+
+    .chat-input-area textarea {
+        font-size: 13px;
+        padding: 10px 12px;
+    }
+
+    .chat-send-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    /* Prevent math/code from breaking layout */
+    .chat-msg-body pre,
+    .chat-msg-body .katex-display {
+        margin: 10px -4px;
+        padding: 10px;
+        font-size: 12px;
+        width: auto;
+        overflow-x: auto;
+    }
+}

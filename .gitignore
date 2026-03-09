@@ -8,6 +8,7 @@ __pycache__/
 *.pyd
 .Python
 backend/.env
+backend/static/
 backend/server.log
 test_api.log
 test_api_2.log

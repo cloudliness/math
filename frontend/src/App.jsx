@@ -11,6 +11,9 @@ function App() {
   const [sessions, setSessions] = useState([])
   const [activeTab, setActiveTab] = useState('chat')
   const [activeSessionId, setActiveSessionId] = useState(localStorage.getItem('activeSessionId') || null)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen)
 
   const fetchDocuments = async () => {
     try {
@@ -74,12 +77,14 @@ function App() {
     setActiveSessionId(id)
     setActiveTab('chat')
     localStorage.setItem('activeSessionId', id)
+    setIsMobileMenuOpen(false) // Close menu on selection for mobile
   }
 
   const handleNewChat = () => {
     setActiveSessionId(null)
     setActiveTab('chat')
     localStorage.removeItem('activeSessionId')
+    setIsMobileMenuOpen(false) // Close menu on new chat
   }
 
   useEffect(() => {
@@ -88,7 +93,7 @@ function App() {
   }, [])
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
       {/* Animated background orbs */}
       <div className="bg-orbs">
         <div className="orb orb-1"></div>
@@ -96,7 +101,21 @@ function App() {
         <div className="orb orb-3"></div>
       </div>
 
-      <aside className="sidebar">
+      {/* Hamburger Menu Button */}
+      <button
+        className="mobile-hamburger"
+        onClick={toggleMobileMenu}
+        aria-label="Toggle Menu"
+      >
+        <span className="hamburger-bar"></span>
+        <span className="hamburger-bar"></span>
+        <span className="hamburger-bar"></span>
+      </button>
+
+      {/* Sidebar Overlay */}
+      {isMobileMenuOpen && <div className="sidebar-overlay" onClick={() => setIsMobileMenuOpen(false)}></div>}
+
+      <aside className={`sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <div className="sidebar-logo">
             <span>∑</span>
@@ -201,7 +220,7 @@ function App() {
             <span className="status-dot"></span>
             <span>System Online</span>
           </div>
-          <div className="sidebar-model">⚡ stepfun/3.5-flash</div>
+          <div className="sidebar-model">⚡ Gemini 2.0 Flash</div>
         </div>
       </aside>
 
@@ -212,12 +231,25 @@ function App() {
             activeDocuments={activeDocuments}
             onSessionCreated={(id) => {
               setActiveSessionId(id)
-              localStorage.setItem('activeSessionId', id)
+              if (id) {
+                localStorage.setItem('activeSessionId', id)
+              } else {
+                localStorage.removeItem('activeSessionId')
+              }
+              setIsMobileMenuOpen(false) // Close menu on session creation
               fetchSessions()
             }}
           />
         )}
-        {activeTab === 'upload' && <UploadPanel onUploadComplete={fetchDocuments} />}
+        {activeTab === 'upload' && (
+          <UploadPanel
+            onUploadComplete={() => {
+              fetchDocuments()
+              setIsMobileMenuOpen(false) // Close menu after upload navigation if needed
+              setActiveTab('upload')
+            }}
+          />
+        )}
       </main>
     </div>
   )

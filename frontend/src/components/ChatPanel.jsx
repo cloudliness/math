@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Component } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -7,7 +7,33 @@ import FlowRenderer from './FlowRenderer'
 import MafsRenderer from './MafsRenderer'
 import './ChatPanel.css'
 
+class MarkdownErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ color: 'red', padding: '10px', background: '#ffebee', borderRadius: '4px', fontSize: '13px' }}>
+          <strong>Error rendering math/markdown:</strong> {this.state.error.toString()}
+          <br /><br />
+          <em>Raw response:</em>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'black', background: '#f5f5f5', padding: '10px' }}>
+            {this.props.rawContent}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1'
+
 
 export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated }) {
   const [messages, setMessages] = useState([])
@@ -18,7 +44,18 @@ export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated
   const inputRef = useRef(null)
 
   // Load history when sessionId changes
+  const prevSessionIdRef = useRef(null)
+
   useEffect(() => {
+    // If we're transitioning from null to a valid ID (session just created),
+    // don't fetch history as we're already managing it locally in sendMessage
+    if (prevSessionIdRef.current === null && sessionId !== null) {
+      prevSessionIdRef.current = sessionId
+      return
+    }
+
+    prevSessionIdRef.current = sessionId
+
     if (!sessionId) {
       setMessages([
         {
@@ -39,6 +76,10 @@ export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated
         if (res.ok) {
           const data = await res.json()
           setMessages(data.messages || [])
+        } else if (res.status === 404) {
+          // If session is missing, reset it
+          onSessionCreated?.(null)
+          setMessages([])
         }
       } catch (err) {
         console.error('Failed to load chat history', err)
@@ -83,7 +124,12 @@ export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated
         })
       })
 
-      if (!response.ok) throw new Error(`Server error: ${response.status}`)
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error("Too many requests. Please wait a minute and try again.")
+        }
+        throw new Error(`Server error: ${response.status}`)
+      }
 
       const data = await response.json()
       setMessages(prev => [...prev, {
@@ -134,12 +180,14 @@ export default function ChatPanel({ sessionId, activeDocuments, onSessionCreated
                 {msg.role === 'user' ? '👤' : '🧠'}
               </div>
               <div className="chat-msg-body">
-                <ReactMarkdown
-                  remarkPlugins={[remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {msg.content}
-                </ReactMarkdown>
+                <MarkdownErrorBoundary rawContent={msg.content}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkMath]}
+                    rehypePlugins={[[rehypeKatex, { strict: false }]]}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </MarkdownErrorBoundary>
                 {msg.sources?.length > 0 && (
                   <div className="chat-sources">
                     <span className="chat-sources-label">📖 Sources</span>
