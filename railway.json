@@ -2,6 +2,9 @@
     "$schema": "https://railway.app/railway.schema.json",
     "build": {
         "builder": "nixpacks",
+        "packages": [
+            "nodejs"
+        ],
         "buildCommand": "cd frontend && npm install && npm run build && cd ../backend && mkdir -p static && cp -r ../frontend/dist/* static/"
     },
     "deploy": {
